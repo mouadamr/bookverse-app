@@ -1,35 +1,30 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase'; // It imports db from the file above
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
-// This is a simplified version. We'll add real user auth later.
-const MOCK_USER_ID = "user_12345"; 
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const query = searchParams.get('q');
 
-export async function POST(request: Request) {
+  if (!query) {
+    return NextResponse.json({ error: 'Query is required' }, { status: 400 });
+  }
+
   try {
-    const { book, shelf } = await request.json();
+    // Calling Google Books API
+    const response = await fetch(
+      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=12`
+    );
+    const data = await response.json();
 
-    if (!book || !shelf) {
-      return NextResponse.json({ error: 'Book and shelf are required' }, { status: 400 });
-    }
+    // Mapping the API data to your 'Book' type
+    const books = data.items?.map((item: any) => ({
+      id: item.id,
+      title: item.volumeInfo.title,
+      authors: item.volumeInfo.authors || ['Unknown Author'],
+      thumbnail: item.volumeInfo.imageLinks?.thumbnail,
+    })) || [];
 
-    // A unique ID for the document will be the user ID plus the book ID
-    const docId = `${MOCK_USER_ID}_${book.id}`;
-    const docRef = doc(db, 'bookshelves', docId);
-
-    await setDoc(docRef, {
-      userId: MOCK_USER_ID,
-      bookId: book.id,
-      shelf: shelf, // e.g., 'read', 'wantToRead'
-      title: book.title,
-      authors: book.authors,
-      thumbnail: book.thumbnail,
-      addedAt: serverTimestamp(),
-    });
-
-    return NextResponse.json({ success: true, docId: docRef.id });
+    return NextResponse.json(books);
   } catch (error) {
-    console.error('Error adding to bookshelf:', error);
-    return NextResponse.json({ error: 'Failed to update bookshelf' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch books' }, { status: 500 });
   }
 }
